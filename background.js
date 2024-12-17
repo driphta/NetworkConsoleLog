@@ -5,6 +5,8 @@ let consoleLogs = [];
 let networkCount = 0;
 let consoleCount = 0;
 let attachedTabs = new Set();
+let currentTabUrl = '';
+let currentTabId = null;
 
 // Initialize extension
 chrome.runtime.onInstalled.addListener(() => {
@@ -17,9 +19,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     switch (message.action) {
         case 'startRecording':
-            startRecording();
-            sendResponse({ success: true });
-            break;
+            // Get current active tab first
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                if (tabs[0]) {
+                    if (!isRecording) {
+                        startRecording(tabs[0].id);
+                        sendResponse({ success: true });
+                    } else {
+                        sendResponse({ success: false, error: 'Already recording' });
+                    }
+                } else {
+                    sendResponse({ success: false, error: 'No active tab found' });
+                }
+            });
+            return true; // Keep the message channel open for async response
 
         case 'stopRecording':
             stopRecording();
@@ -48,56 +61,52 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
 });
 
-function startRecording() {
-    if (isRecording) return;
+function startRecording(tabId) {
+    if (isRecording) {
+        console.log('Already recording');
+        return;
+    }
 
     console.log('Starting recording');
     resetState();
     isRecording = true;
     recordingStartTime = Date.now();
 
-    // Attach to all existing tabs
-    chrome.tabs.query({}, (tabs) => {
-        tabs.forEach(tab => {
-            if (shouldAttachToTab(tab)) {
-                attachDebugger(tab.id);
-            }
-        });
+    chrome.debugger.attach({ tabId }, '1.2', () => {
+        if (chrome.runtime.lastError) {
+            console.error('Failed to attach debugger:', chrome.runtime.lastError);
+            isRecording = false;
+            return;
+        }
+        
+        // Enable network tracking
+        chrome.debugger.sendCommand({ tabId }, 'Network.enable');
+        // Enable console tracking
+        chrome.debugger.sendCommand({ tabId }, 'Console.enable');
+        chrome.debugger.sendCommand({ tabId }, 'Runtime.enable');
+        
+        attachedTabs.add(tabId);
     });
-
-    // Listen for new tabs
-    chrome.tabs.onCreated.addListener(onTabCreated);
-    chrome.tabs.onUpdated.addListener(onTabUpdated);
-
-    broadcastState();
 }
 
 function stopRecording() {
     if (!isRecording) return;
-    
+
     console.log('Stopping recording');
     isRecording = false;
     recordingStartTime = null;
 
-    // Remove tab listeners
-    chrome.tabs.onCreated.removeListener(onTabCreated);
-    chrome.tabs.onUpdated.removeListener(onTabUpdated);
-
-    // Detach debugger from all tabs
-    for (const tabId of attachedTabs) {
+    // Detach debugger from all attached tabs
+    attachedTabs.forEach(tabId => {
         chrome.debugger.detach({ tabId }).catch(() => {
             console.log('Failed to detach debugger from tab:', tabId);
         });
-    }
+    });
     attachedTabs.clear();
 
-    // Show save dialog if there are logs to save
+    // Save logs immediately instead of showing dialog
     if (networkLogs.length > 0 || consoleLogs.length > 0) {
-        chrome.runtime.sendMessage({
-            action: 'showSaveDialog',
-            networkCount,
-            consoleCount
-        });
+        saveLogs();
     }
 
     broadcastState();
@@ -113,19 +122,29 @@ function shouldAttachToTab(tab) {
 }
 
 function attachDebugger(tabId) {
-    if (attachedTabs.has(tabId)) return;
-
-    chrome.debugger.attach({ tabId }, "1.2")
+    chrome.debugger.attach({ tabId }, '1.2')
         .then(() => {
             console.log('Debugger attached to tab:', tabId);
             attachedTabs.add(tabId);
             
-            // Enable network and console monitoring
-            chrome.debugger.sendCommand({ tabId }, "Network.enable");
-            chrome.debugger.sendCommand({ tabId }, "Console.enable");
+            // Get current tab URL
+            chrome.tabs.get(tabId, (tab) => {
+                currentTabUrl = tab.url;
+                // Enable all required debugger domains
+                return Promise.all([
+                    chrome.debugger.sendCommand({ tabId }, "Network.enable"),
+                    chrome.debugger.sendCommand({ tabId }, "Runtime.enable"),
+                    chrome.debugger.sendCommand({ tabId }, "Debugger.enable"),
+                    // Set pause on exceptions to capture stack traces
+                    chrome.debugger.sendCommand({ tabId }, "Debugger.setPauseOnExceptions", { state: "none" }),
+                    // Enable collecting stack traces for console methods
+                    chrome.debugger.sendCommand({ tabId }, "Runtime.setAsyncCallStackDepth", { maxDepth: 32 })
+                ]);
+            });
         })
         .catch(error => {
             console.log('Failed to attach debugger:', error);
+            isRecording = false;  // Reset recording state if debugger fails to attach
         });
 }
 
@@ -139,6 +158,9 @@ function onTabCreated(tab) {
 function onTabUpdated(tabId, changeInfo, tab) {
     if (isRecording && changeInfo.status === 'complete' && shouldAttachToTab(tab)) {
         attachDebugger(tabId);
+    }
+    if (isRecording && changeInfo.url) {
+        currentTabUrl = changeInfo.url;
     }
 }
 
@@ -166,6 +188,15 @@ chrome.debugger.onEvent.addListener((debuggeeId, method, params) => {
                 type: 'response',
                 data: params
             });
+            break;
+
+        case 'Runtime.consoleAPICalled':
+            consoleCount++;
+            consoleLogs.push({
+                timestamp: new Date(params.timestamp / 1000).toISOString(),
+                ...params
+            });
+            broadcastCounts();
             break;
 
         case 'Console.messageAdded':

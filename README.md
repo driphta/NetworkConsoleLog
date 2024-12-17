@@ -30,6 +30,11 @@ A Microsoft Edge extension that captures and logs network requests and console o
 - Enhanced crash resistance and browser stability
 - Updated UI to show formatted log counts with thousands separators
 
+### Version 1.3.0 (Latest)
+- Enhanced error logging to capture full stack traces and detailed error information
+- Added automatic save dialog when stopping the recording (no need to click save button)
+- Fixed tab handling for more reliable recording sessions
+
 ## Installation
 
 1. Clone this repository or download the source code
