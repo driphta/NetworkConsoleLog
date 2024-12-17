@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Console Logger Test</title>
+</head>
+<body>
+    <h1>Console Logger Test Page</h1>
+    <button onclick="generateLogs()">Generate Test Logs</button>
+    <script>
+        function generateLogs() {
+            console.log('This is a test log message');
+            console.info('This is an info message');
+            console.warn('This is a warning message');
+            console.error('This is an error message');
+            console.debug('This is a debug message');
+            
+            // Test object logging
+            console.log('Logging an object:', { test: 'value', number: 123 });
+            
+            // Test array logging
+            console.log('Logging an array:', [1, 2, 3, 4, 5]);
+            
+            // Test multiple arguments
+            console.log('Multiple', 'arguments', 'test');
+            
+            alert('Test logs generated! Check the console and save the logs.');
+        }
+
+        // Generate one log on page load
+        console.log('Test page loaded at:', new Date().toISOString());
+    </script>
+</body>
+</html>

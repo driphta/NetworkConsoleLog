@@ -1,0 +1,21 @@
+# System Files
+.DS_Store
+Thumbs.db
+
+# IDE Files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+*.log
+*.har
+
+# Temporary files
+*.tmp
+*.temp
+
+# Node (if you add npm in the future)
+node_modules/
+package-lock.json

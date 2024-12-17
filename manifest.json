@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "Network & Console Logger",
+  "version": "1.0",
+  "description": "Capture and save network requests and console logs",
+  "permissions": [
+    "webRequest",
+    "downloads",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "file:///*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>", "file:///*"],
+      "js": ["console-logger.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "commands": {
+    "toggle-recording": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+R"
+      },
+      "description": "Toggle recording"
+    },
+    "clear-logs": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+C"
+      },
+      "description": "Clear logs"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Network & Console Logger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #1a1b1e;
+      --bg-secondary: #2c2d31;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0a0;
+      --accent: #4f46e5;
+      --accent-hover: #4338ca;
+      --border: #3f3f46;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+    }
+
+    body {
+      width: 320px;
+      padding: 20px;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .title {
+      font-family: 'Inter', sans-serif;
+      font-weight: 600;
+      font-size: 18px;
+      color: var(--text-primary);
+      margin: 0 0 10px 0;
+      text-align: center;
+      letter-spacing: -0.5px;
+    }
+
+    .stats {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px;
+      background-color: var(--bg-secondary);
+      border-radius: 8px;
+      margin-top: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .stat-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .stat-count {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    button {
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: none;
+      background-color: var(--accent);
+      color: var(--text-primary);
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    button:hover {
+      background-color: var(--accent-hover);
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      transform: none;
+    }
+
+    .timer {
+      text-align: center;
+      font-size: 2.5em;
+      font-weight: 600;
+      margin: 10px 0;
+      font-variant-numeric: tabular-nums;
+      color: var(--text-primary);
+      text-shadow: 0 0 10px rgba(79, 70, 229, 0.3);
+      font-family: 'Courier New', monospace;
+    }
+
+    .settings {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .settings label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .keyboard-shortcuts {
+      font-size: 12px;
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .shortcut {
+      background-color: var(--bg-secondary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin: 0 2px;
+    }
+
+    .save-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.8);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid var(--text-secondary);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    .save-text {
+      color: var(--text-primary);
+      font-size: 14px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .notification {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: var(--bg-secondary);
+      color: var(--text-primary);
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 13px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="title">Network & Console Logger</h1>
+    <div class="stats">
+      <div class="stat-item">
+        <span>Network:</span>
+        <span id="networkCount" class="stat-count">0</span>
+      </div>
+      <div class="stat-item">
+        <span>Console:</span>
+        <span id="consoleCount" class="stat-count">0</span>
+      </div>
+    </div>
+    <button id="startStopBtn">Start Recording</button>
+    <button id="clearBtn">Clear Logs</button>
+    <div id="timer" class="timer">00:00:00</div>
+    <div class="settings">
+      <div class="auto-restart-container">
+        <label class="auto-restart-label">
+          <input type="checkbox" id="autoRestartCheckbox" checked>
+          Auto-restart every 10 minutes
+        </label>
+      </div>
+    </div>
+    <div class="keyboard-shortcuts">
+      Shortcuts: 
+      <span class="shortcut">Ctrl+Shift+R</span> Record
+      <span class="shortcut">Ctrl+Shift+C</span> Clear
+    </div>
+  </div>
+  <div id="saveOverlay" class="save-overlay">
+    <div class="spinner"></div>
+    <div class="save-text">Saving logs...</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
