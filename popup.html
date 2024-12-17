@@ -46,25 +46,40 @@
 
     .stats {
       display: flex;
-      justify-content: space-between;
-      padding: 10px;
+      flex-direction: column;
+      gap: 10px;
+      padding: 15px;
       background-color: var(--bg-secondary);
       border-radius: 8px;
-      margin-top: 10px;
       border: 1px solid var(--border);
     }
 
-    .stat-item {
+    .stat-row {
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 6px;
-      font-size: 13px;
-      color: var(--text-secondary);
     }
 
-    .stat-count {
+    .stat-label {
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .stat-value {
+      font-family: 'Inter', monospace;
+      font-size: 14px;
       font-weight: 600;
       color: var(--text-primary);
+      background: var(--bg-primary);
+      padding: 4px 8px;
+      border-radius: 4px;
+      min-width: 80px;
+      text-align: right;
+    }
+
+    #timer {
+      color: var(--accent);
     }
 
     button {
@@ -93,31 +108,6 @@
       transform: none;
     }
 
-    .timer {
-      text-align: center;
-      font-size: 2.5em;
-      font-weight: 600;
-      margin: 10px 0;
-      font-variant-numeric: tabular-nums;
-      color: var(--text-primary);
-      text-shadow: 0 0 10px rgba(79, 70, 229, 0.3);
-      font-family: 'Courier New', monospace;
-    }
-
-    .settings {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .settings label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 13px;
-      color: var(--text-secondary);
-    }
-
     .keyboard-shortcuts {
       font-size: 12px;
       color: var(--text-secondary);
@@ -133,38 +123,45 @@
       margin: 0 2px;
     }
 
-    .save-overlay {
+    #saveOverlay {
+      display: none;
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       bottom: 0;
-      background-color: rgba(0, 0, 0, 0.8);
-      display: none;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+    }
+
+    .save-dialog {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+      width: 80%;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    }
+
+    .save-buttons {
+      display: flex;
+      gap: 10px;
       justify-content: center;
-      align-items: center;
-      flex-direction: column;
-      gap: 20px;
+      margin-top: 15px;
     }
 
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 4px solid var(--text-secondary);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
+    #saveLogs {
+      background: #2196F3;
+      color: white;
     }
 
-    .save-text {
-      color: var(--text-primary);
-      font-size: 14px;
-    }
-
-    @keyframes spin {
-      to {
-        transform: rotate(360deg);
-      }
+    #cancelSave {
+      background: #9e9e9e;
+      color: white;
     }
 
     .notification {
@@ -180,41 +177,66 @@
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
       z-index: 1000;
     }
+
+    #saveDialog {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dialog-content {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    .dialog-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+      justify-content: center;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1 class="title">Network & Console Logger</h1>
     <div class="stats">
-      <div class="stat-item">
-        <span>Network:</span>
-        <span id="networkCount" class="stat-count">0</span>
+      <div class="stat-row">
+        <span class="stat-label">Recording Time</span>
+        <span class="stat-value" id="timer">00:00:00</span>
       </div>
-      <div class="stat-item">
-        <span>Console:</span>
-        <span id="consoleCount" class="stat-count">0</span>
+      <div class="stat-row">
+        <span class="stat-label">Network Requests</span>
+        <span class="stat-value" id="networkCount">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Console Logs</span>
+        <span class="stat-value" id="consoleCount">0</span>
       </div>
     </div>
     <button id="startStopBtn">Start Recording</button>
-    <button id="clearBtn">Clear Logs</button>
-    <div id="timer" class="timer">00:00:00</div>
-    <div class="settings">
-      <div class="auto-restart-container">
-        <label class="auto-restart-label">
-          <input type="checkbox" id="autoRestartCheckbox" checked>
-          Auto-restart every 10 minutes
-        </label>
-      </div>
-    </div>
     <div class="keyboard-shortcuts">
       Shortcuts: 
       <span class="shortcut">Ctrl+Shift+R</span> Record
       <span class="shortcut">Ctrl+Shift+C</span> Clear
     </div>
   </div>
-  <div id="saveOverlay" class="save-overlay">
-    <div class="spinner"></div>
-    <div class="save-text">Saving logs...</div>
+  <div id="saveOverlay">
+    <div class="save-dialog">
+      <p id="saveMessage">Save logs?</p>
+      <div class="save-buttons">
+        <button id="saveLogs">Save</button>
+        <button id="cancelSave">Cancel</button>
+      </div>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>

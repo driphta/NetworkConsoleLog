@@ -2,32 +2,187 @@
 <html>
 <head>
     <title>Console Logger Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .button-group {
+            margin: 20px 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+        .error-button { background: #ffebee; }
+        .warn-button { background: #fff3e0; }
+        .info-button { background: #e3f2fd; }
+        .log-button { background: #e8f5e9; }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+        }
+    </style>
 </head>
 <body>
     <h1>Console Logger Test Page</h1>
-    <button onclick="generateLogs()">Generate Test Logs</button>
+    <p>Use these buttons to generate different types of console logs and errors. Make sure to start recording in the extension first!</p>
+    
+    <div class="button-group">
+        <button onclick="startPeriodicLogs()" class="log-button">Start Periodic Logs (1/sec)</button>
+        <button onclick="stopPeriodicLogs()" class="log-button">Stop Periodic Logs</button>
+        <button onclick="generateBulkLogs()" class="log-button">Generate 100 Logs</button>
+    </div>
+
+    <div class="button-group">
+        <button onclick="generateError()" class="error-button">Generate Error</button>
+        <button onclick="generateWarning()" class="warn-button">Generate Warning</button>
+        <button onclick="generateInfo()" class="info-button">Generate Info</button>
+        <button onclick="makeNetworkRequest()" class="log-button">Make Network Request</button>
+    </div>
+
+    <div class="button-group">
+        <button onclick="generateComplexLogs()" class="log-button">Log Complex Objects</button>
+        <button onclick="generateRecursiveObject()" class="error-button">Log Recursive Object</button>
+        <button onclick="generateLongString()" class="warn-button">Log Long String</button>
+    </div>
+
+    <div id="status">Status: Ready</div>
+
     <script>
-        function generateLogs() {
-            console.log('This is a test log message');
-            console.info('This is an info message');
-            console.warn('This is a warning message');
-            console.error('This is an error message');
-            console.debug('This is a debug message');
-            
-            // Test object logging
-            console.log('Logging an object:', { test: 'value', number: 123 });
-            
-            // Test array logging
-            console.log('Logging an array:', [1, 2, 3, 4, 5]);
-            
-            // Test multiple arguments
-            console.log('Multiple', 'arguments', 'test');
-            
-            alert('Test logs generated! Check the console and save the logs.');
+        let logInterval = null;
+        let counter = 0;
+
+        // Periodic Logs
+        function startPeriodicLogs() {
+            if (!logInterval) {
+                logInterval = setInterval(() => {
+                    counter++;
+                    console.log(`Periodic log #${counter}`);
+                    updateStatus(`Generated periodic log #${counter}`);
+                }, 1000);
+                updateStatus('Started periodic logs');
+            }
         }
 
-        // Generate one log on page load
+        function stopPeriodicLogs() {
+            if (logInterval) {
+                clearInterval(logInterval);
+                logInterval = null;
+                updateStatus('Stopped periodic logs');
+            }
+        }
+
+        // Bulk Logs
+        function generateBulkLogs() {
+            for (let i = 0; i < 100; i++) {
+                console.log(`Bulk log #${i + 1}`);
+            }
+            updateStatus('Generated 100 bulk logs');
+        }
+
+        // Error Generation
+        function generateError() {
+            try {
+                throw new Error('Test error message');
+            } catch (e) {
+                console.error('Caught error:', e);
+                updateStatus('Generated error');
+            }
+        }
+
+        // Warning Generation
+        function generateWarning() {
+            console.warn('Test warning message', { 
+                timestamp: new Date(),
+                level: 'warning',
+                code: 'WARN001'
+            });
+            updateStatus('Generated warning');
+        }
+
+        // Info Generation
+        function generateInfo() {
+            console.info('Test info message', {
+                details: 'Additional information',
+                timestamp: new Date()
+            });
+            updateStatus('Generated info message');
+        }
+
+        // Network Request
+        function makeNetworkRequest() {
+            updateStatus('Making network request...');
+            fetch('https://jsonplaceholder.typicode.com/posts/1')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Network response:', data);
+                    updateStatus('Network request completed');
+                })
+                .catch(error => {
+                    console.error('Network error:', error);
+                    updateStatus('Network request failed');
+                });
+        }
+
+        // Complex Object Logging
+        function generateComplexLogs() {
+            const complexObject = {
+                string: 'test',
+                number: 123,
+                boolean: true,
+                array: [1, 2, 3, { nested: 'value' }],
+                object: {
+                    nested1: {
+                        nested2: {
+                            nested3: 'deep value'
+                        }
+                    }
+                },
+                date: new Date(),
+                function: function() { return 'test'; },
+                regexp: /test/g
+            };
+
+            console.log('Complex object:', complexObject);
+            console.table([
+                { id: 1, name: 'Test 1', value: 100 },
+                { id: 2, name: 'Test 2', value: 200 },
+                { id: 3, name: 'Test 3', value: 300 }
+            ]);
+            updateStatus('Generated complex logs');
+        }
+
+        // Recursive Object
+        function generateRecursiveObject() {
+            const obj = { name: 'Recursive Object' };
+            obj.self = obj;
+            console.log('Recursive object:', obj);
+            updateStatus('Generated recursive object log');
+        }
+
+        // Long String
+        function generateLongString() {
+            const longString = 'Test string '.repeat(1000);
+            console.log('Long string:', longString);
+            updateStatus('Generated long string log');
+        }
+
+        // Status Update
+        function updateStatus(message) {
+            const status = document.getElementById('status');
+            status.textContent = `Status: ${message} (${new Date().toLocaleTimeString()})`;
+        }
+
+        // Initial log
         console.log('Test page loaded at:', new Date().toISOString());
+        updateStatus('Page loaded');
     </script>
 </body>
 </html>

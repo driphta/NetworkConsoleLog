@@ -1,189 +1,140 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const startStopBtn = document.getElementById('startStopBtn');
-  const clearBtn = document.getElementById('clearBtn');
-  const networkCount = document.getElementById('networkCount');
-  const consoleCount = document.getElementById('consoleCount');
-  const timerDisplay = document.getElementById('timer');
-  const saveOverlay = document.getElementById('saveOverlay');
-  const autoRestartCheckbox = document.getElementById('autoRestartCheckbox');
-  
-  let isRecording = false;
-  let startTime = null;
-  let timerInterval = null;
-  
-  function debugLog(message) {
-    console.log(`[Popup Debug] ${message}`);
-  }
-  
-  // First get the current state from the background script
-  debugLog('Getting initial state');
-  chrome.runtime.sendMessage({ action: 'getState' }, (response) => {
-    if (response) {
-      debugLog(`Got state: recording=${response.isRecording}, startTime=${response.recordingStartTime}`);
-      isRecording = response.isRecording;
-      startTime = response.recordingStartTime;
-      
-      // Immediately update counts
-      networkCount.textContent = response.networkCount || '0';
-      consoleCount.textContent = response.consoleCount || '0';
-      
-      updateRecordingState();
-      if (isRecording && startTime) {
-        startTimer();
-      }
-    } else {
-      debugLog('No response received from getState');
-    }
-  });
+    const startStopBtn = document.getElementById('startStopBtn');
+    const saveOverlay = document.getElementById('saveOverlay');
+    const saveLogs = document.getElementById('saveLogs');
+    const cancelSave = document.getElementById('cancelSave');
+    const networkCount = document.getElementById('networkCount');
+    const consoleCount = document.getElementById('consoleCount');
+    const timerDisplay = document.getElementById('timer');
+    const saveMessage = document.getElementById('saveMessage');
 
-  // Listen for messages from background script
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    debugLog(`Received message: ${message.action || message.type}`);
-    
-    if (message.action === 'updateCounts') {
-      updateLogCounts(message.networkCount, message.consoleCount);
-      sendResponse();
-    } else if (message.action === 'resetTimer') {
-      startTime = message.startTime;
-      startTimer();
-      sendResponse();
-    } else if (message.action === 'showSaveOverlay') {
-      saveOverlay.style.display = 'flex';
-      sendResponse();
-    } else if (message.action === 'hideSaveOverlay') {
-      saveOverlay.style.display = 'none';
-      sendResponse();
-    } else if (message.action === 'updateState') {
-      debugLog(`State update: recording=${message.isRecording}, startTime=${message.recordingStartTime}`);
-      isRecording = message.isRecording;
-      startTime = message.recordingStartTime;
-      updateRecordingState();
-      if (isRecording && startTime) {
-        startTimer();
-      } else {
-        stopTimer();
-      }
-      sendResponse();
-    } else if (message.type === 'notification') {
-      debugLog(`Notification: ${message.message}`);
-      const notification = document.createElement('div');
-      notification.className = 'notification';
-      notification.textContent = message.message;
-      document.body.appendChild(notification);
-      
-      // Use requestAnimationFrame for timing
-      let start = performance.now();
-      const duration = 5000; // 5 seconds
-      
-      function removeNotification(timestamp) {
-        const elapsed = timestamp - start;
-        if (elapsed >= duration) {
-          notification.remove();
-        } else {
-          requestAnimationFrame(removeNotification);
+    let isRecording = false;
+    let startTime = null;
+    let timerInterval = null;
+
+    // Initialize state
+    chrome.runtime.sendMessage({ action: 'getState' }, (response) => {
+        if (chrome.runtime.lastError) {
+            console.warn('Error getting initial state:', chrome.runtime.lastError);
+            return;
         }
-      }
-      
-      requestAnimationFrame(removeNotification);
-      sendResponse();
-    }
-  });
-  
-  // Start/Stop button click handler
-  startStopBtn.addEventListener('click', () => {
-    debugLog(`Start/Stop clicked. Current state: recording=${isRecording}`);
-    startStopBtn.disabled = true; // Prevent double-clicks
-    
-    if (isRecording) {
-      debugLog('Sending stopRecording message');
-      chrome.runtime.sendMessage({ action: 'stopRecording' }, () => {
-        debugLog('Received stopRecording response');
-        isRecording = false;
-        startTime = null;
-        stopTimer();
-        updateRecordingState();
-        startStopBtn.disabled = false;
-      });
-    } else {
-      debugLog('Sending startRecording message');
-      chrome.runtime.sendMessage({ action: 'startRecording' }, () => {
-        debugLog('Received startRecording response');
-        isRecording = true;
-        startTime = Date.now();
-        updateRecordingState();
-        startTimer();
-        startStopBtn.disabled = false;
-      });
-    }
-  });
-  
-  // Clear button click handler
-  clearBtn.addEventListener('click', () => {
-    debugLog('Clear clicked');
-    clearBtn.disabled = true;
-    chrome.runtime.sendMessage({ action: 'clearLogs' }, () => {
-      networkCount.textContent = '0';
-      consoleCount.textContent = '0';
-      clearBtn.disabled = false;
+        if (response) {
+            isRecording = response.isRecording;
+            startTime = response.recordingStartTime;
+            updateRecordingState();
+            updateLogCounts(response.networkCount || 0, response.consoleCount || 0);
+            if (isRecording && startTime) {
+                startTimer();
+            }
+        }
     });
-  });
-  
-  // Auto-restart checkbox handler
-  autoRestartCheckbox.addEventListener('change', () => {
-    debugLog(`Auto-restart changed: ${autoRestartCheckbox.checked}`);
-    chrome.runtime.sendMessage({
-      action: 'updateAutoRestart',
-      enabled: autoRestartCheckbox.checked
+
+    // Listen for messages from background script
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'updateCounts') {
+            updateLogCounts(message.networkCount, message.consoleCount);
+        } else if (message.action === 'updateState') {
+            isRecording = message.isRecording;
+            startTime = message.recordingStartTime;
+            updateRecordingState();
+            if (isRecording && startTime) {
+                startTimer();
+            } else {
+                stopTimer();
+            }
+        } else if (message.action === 'showSaveDialog') {
+            saveMessage.textContent = `Save ${formatNumber(message.networkCount)} network requests and ${formatNumber(message.consoleCount)} console logs?`;
+            saveOverlay.style.display = 'block';
+        }
+        sendResponse({ received: true });
     });
-  });
-  
-  function updateRecordingState() {
-    debugLog(`Updating recording state: ${isRecording}`);
-    startStopBtn.textContent = isRecording ? 'Stop Recording' : 'Start Recording';
-    startStopBtn.className = isRecording ? 'stop' : 'start';
-  }
-  
-  function startTimer() {
-    stopTimer(); // Clear any existing timer
-    
-    if (!startTime) {
-      timerDisplay.textContent = '00:00';
-      return;
+
+    // Start/Stop button
+    startStopBtn.addEventListener('click', () => {
+        startStopBtn.disabled = true;
+        const action = isRecording ? 'stopRecording' : 'startRecording';
+        
+        chrome.runtime.sendMessage({ action }, (response) => {
+            if (response && response.success) {
+                isRecording = !isRecording;
+                startTime = isRecording ? Date.now() : null;
+                updateRecordingState();
+                if (isRecording) {
+                    startTimer();
+                } else {
+                    stopTimer();
+                }
+            }
+            startStopBtn.disabled = false;
+        });
+    });
+
+    // Save button
+    saveLogs.addEventListener('click', () => {
+        saveLogs.disabled = true;
+        cancelSave.disabled = true;
+        saveMessage.textContent = 'Saving logs...';
+        
+        chrome.runtime.sendMessage({ action: 'saveLogs' }, () => {
+            saveOverlay.style.display = 'none';
+            saveLogs.disabled = false;
+            cancelSave.disabled = false;
+            saveMessage.textContent = '';
+        });
+    });
+
+    // Cancel button
+    cancelSave.addEventListener('click', () => {
+        saveOverlay.style.display = 'none';
+        chrome.runtime.sendMessage({ action: 'cancelSave' });
+    });
+
+    function updateRecordingState() {
+        startStopBtn.textContent = isRecording ? 'Stop Recording' : 'Start Recording';
+        startStopBtn.className = isRecording ? 'stop' : 'start';
     }
-    
-    function updateDisplay() {
-      if (!isRecording || !startTime) {
+
+    function startTimer() {
         stopTimer();
-        return;
-      }
-      
-      const now = Date.now();
-      const elapsedTime = now - startTime;
-      const elapsedSeconds = Math.floor(elapsedTime / 1000);
-      
-      timerDisplay.textContent = formatTime(elapsedSeconds);
+        if (!startTime) {
+            timerDisplay.textContent = '00:00';
+            return;
+        }
+
+        function updateDisplay() {
+            if (!isRecording || !startTime) {
+                stopTimer();
+                return;
+            }
+            const now = Date.now();
+            const elapsedTime = now - startTime;
+            const elapsedSeconds = Math.floor(elapsedTime / 1000);
+            timerDisplay.textContent = formatTime(elapsedSeconds);
+        }
+
+        updateDisplay();
+        timerInterval = setInterval(updateDisplay, 1000);
     }
-    
-    updateDisplay(); // Initial update
-    timerInterval = setInterval(updateDisplay, 1000);
-  }
-  
-  function stopTimer() {
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      timerInterval = null;
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
     }
-  }
-  
-  function formatTime(seconds) {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
-  }
-  
-  function updateLogCounts(networkCountValue, consoleCountValue) {
-    debugLog(`Updating counts: network=${networkCountValue}, console=${consoleCountValue}`);
-    networkCount.textContent = networkCountValue;
-    consoleCount.textContent = consoleCountValue;
-  }
+
+    function formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+    }
+
+    function updateLogCounts(networkCountValue, consoleCountValue) {
+        networkCount.textContent = formatNumber(networkCountValue);
+        consoleCount.textContent = formatNumber(consoleCountValue);
+    }
+
+    function formatNumber(num) {
+        return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
 });

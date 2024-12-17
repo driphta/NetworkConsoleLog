@@ -1,69 +1,80 @@
-# Edge Network & Console Logger Extension
+# Network & Console Logger Extension
 
-A Microsoft Edge extension that captures and saves network requests and console logs in HAR format. Perfect for debugging and monitoring web applications.
+A Microsoft Edge extension that captures and logs network requests and console output for debugging purposes.
 
 ## Features
 
-- Record network requests in HAR format
-- Capture console logs (info, warn, error, debug)
-- Auto-restart capability to handle long recording sessions
-- Simple popup interface for controlling recording
-- Keyboard shortcuts for quick access
-- Export logs in industry-standard formats (HAR for network, text for console)
+- Captures all network requests made by web pages
+- Logs all console output (log, info, warn, error, debug)
+- Exports network logs in HAR format for compatibility with standard tools
+- Exports console logs in JSON format for easy analysis
+- Real-time logging with Chrome Debugger API integration
+- Clean user interface showing recording time and log counts
+
+## Recent Updates
+
+### Version 1.2.0 (December 2024)
+- Switched to Chrome Debugger API for more accurate network and console capture
+- Implemented HAR format export for network logs
+- Added JSON format export for console logs
+- Improved save functionality with proper file download dialogs
+- Enhanced error handling and stability
+- Simplified UI by removing clear logs button
+- Added proper cleanup of debugger connections
+
+### Version 1.1.0 (December 2024)
+- Implemented rolling log buffer system (keeps last 10,000 entries)
+- Removed auto-restart functionality in favor of more stable log management
+- Added robust error handling for runtime API access
+- Improved message batching system with memory optimization
+- Enhanced crash resistance and browser stability
+- Updated UI to show formatted log counts with thousands separators
 
 ## Installation
 
 1. Clone this repository or download the source code
 2. Open Microsoft Edge and navigate to `edge://extensions/`
-3. Enable "Developer mode" in the bottom-left corner
+3. Enable "Developer mode" in the top right
 4. Click "Load unpacked" and select the extension directory
 
 ## Usage
 
-1. Click the extension icon in the toolbar to open the popup interface
+1. Click the extension icon in your browser toolbar
 2. Click "Start Recording" to begin capturing logs
-3. Navigate websites as normal - all network requests and console logs will be captured
-4. Click "Stop Recording" when finished
-5. Click "Save Logs" to download:
-   - Network logs as `.har` file
-   - Console logs as `.log` file
+3. Navigate to web pages you want to monitor
+4. View the captured network requests and console logs in real-time
+5. Click "Stop Recording" when finished
+6. Choose "Save" in the dialog to download your logs:
+   - Network logs will be saved as a .har file
+   - Console logs will be saved as a .json file
 
-### Keyboard Shortcuts
+## Technical Details
 
-- `Ctrl+Shift+R`: Toggle recording
-- `Ctrl+Shift+C`: Clear logs
+The extension uses:
+- Chrome Debugger API for accurate network and console capture
+- Chrome Extension APIs (runtime, tabs, downloads)
+- HAR format for network log export
+- JSON format for console log export
+- Proper cleanup of debugger connections
 
-## File Structure
+## Known Limitations
 
-- `manifest.json`: Extension configuration
-- `popup.html/js`: User interface
-- `background.js`: Core recording functionality
-- `console-logger.js`: Console capture implementation
-- `options.html/js`: Settings page
-- `icons/`: Extension icons
+- Cannot capture logs from browser internal pages (chrome://, edge://, etc.)
+- Extension must be manually loaded in developer mode
+- Requires page refresh for capturing existing tabs when starting recording
 
-## Permissions
+## Troubleshooting
 
-The extension requires the following permissions:
-- `webRequest`: To capture network requests
-- `downloads`: To save log files
-- `storage`: To persist settings
-- `scripting`: To inject console logging
-- `tabs`: To track tabs and inject scripts
-
-## Development
-
-To modify or enhance the extension:
-
-1. Make your changes to the source files
-2. Reload the extension in Edge
-3. Test your changes
-4. Submit a pull request if you'd like to contribute
+If you encounter issues:
+1. Check that the extension has required permissions
+2. Ensure developer mode is enabled
+3. Try restarting the recording
+4. Reload the extension if necessary
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Feel free to submit issues and enhancement requests!
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+[MIT License](LICENSE)

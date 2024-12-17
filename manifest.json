@@ -1,18 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Network & Console Logger",
-  "version": "1.0",
-  "description": "Capture and save network requests and console logs",
+  "version": "1.1.0",
+  "description": "Captures network requests and console logs in the same format as Chrome DevTools",
   "permissions": [
+    "debugger",
     "webRequest",
-    "downloads",
-    "storage",
     "scripting",
-    "tabs"
+    "tabs",
+    "storage",
+    "downloads"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "file:///*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"
@@ -23,27 +23,6 @@
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    }
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>", "file:///*"],
-      "js": ["console-logger.js"],
-      "run_at": "document_start"
-    }
-  ],
-  "commands": {
-    "toggle-recording": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+R"
-      },
-      "description": "Toggle recording"
-    },
-    "clear-logs": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+C"
-      },
-      "description": "Clear logs"
     }
   },
   "icons": {

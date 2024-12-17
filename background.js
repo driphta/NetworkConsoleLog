@@ -2,358 +2,304 @@ let isRecording = false;
 let recordingStartTime = null;
 let networkLogs = [];
 let consoleLogs = [];
-let autoRestartInterval = null;
-let isAutoRestartEnabled = true;
+let networkCount = 0;
+let consoleCount = 0;
+let attachedTabs = new Set();
 
-const AUTO_RESTART_INTERVAL = 10 * 60 * 1000; // 10 minutes
-
-// Initialize settings
-chrome.storage.local.get(['isRecording', 'recordingStartTime'], (result) => {
-  isRecording = result.isRecording || false;
-  recordingStartTime = result.recordingStartTime || null;
-  
-  if (isRecording) {
-    injectContentScriptToAllTabs();
-  }
+// Initialize extension
+chrome.runtime.onInstalled.addListener(() => {
+    console.log('Extension installed');
 });
 
-// Inject content script when a new tab is created
-chrome.tabs.onCreated.addListener((tab) => {
-  if (isRecording && tab.id) {
-    injectContentScript(tab.id);
-  }
-});
+// Message handling
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('Received message:', message);
 
-// Inject content script when a tab is updated
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (isRecording && changeInfo.status === 'complete') {
-    injectContentScript(tabId);
-  }
-});
+    switch (message.action) {
+        case 'startRecording':
+            startRecording();
+            sendResponse({ success: true });
+            break;
 
-async function injectContentScript(tabId) {
-  try {
-    // Check if we can access the tab
-    const tab = await chrome.tabs.get(tabId);
-    console.log('[Background] Attempting to inject into tab:', tab.url);
-    
-    // Allow http, https, and file protocols
-    if (tab.url && (tab.url.startsWith('http://') || 
-                    tab.url.startsWith('https://') || 
-                    tab.url.startsWith('file://'))) {
-      console.log('[Background] Injecting content script into tab:', tabId);
-      await chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ['console-logger.js']
-      });
-      console.log('[Background] Content script injection successful');
-    } else {
-      console.log('[Background] Skipping injection for tab with URL:', tab.url);
+        case 'stopRecording':
+            stopRecording();
+            sendResponse({ success: true });
+            break;
+
+        case 'getState':
+            sendResponse({
+                isRecording,
+                recordingStartTime,
+                networkCount,
+                consoleCount
+            });
+            break;
+
+        case 'saveLogs':
+            saveLogs();
+            sendResponse({ success: true });
+            break;
+
+        case 'cancelSave':
+            resetState();
+            sendResponse({ success: true });
+            break;
     }
-  } catch (e) {
-    console.error('[Background] Error injecting content script:', e);
-  }
-}
-
-async function injectContentScriptToAllTabs() {
-  console.log('[Background] Injecting content script to all tabs');
-  const tabs = await chrome.tabs.query({
-    url: ['http://*/*', 'https://*/*', 'file://*/*']
-  });
-  console.log('[Background] Found tabs:', tabs.length);
-  for (const tab of tabs) {
-    if (tab.id) {
-      await injectContentScript(tab.id);
-    }
-  }
-}
-
-chrome.webRequest.onBeforeRequest.addListener(
-  (details) => {
-    if (isRecording && details.type) {
-      networkLogs.push({
-        timestamp: new Date().toISOString(),
-        url: details.url,
-        type: details.type
-      });
-      updatePopupCounts();
-    }
-  },
-  { urls: ["<all_urls>"] }
-);
-
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('[Background] Received message:', request.action, request);
-  
-  if (request.action === 'startRecording') {
-    startRecording();
-    sendResponse({ success: true });
-  } else if (request.action === 'stopRecording') {
-    stopRecording(false);
-    sendResponse({ success: true });
-  } else if (request.action === 'getState') {
-    sendResponse({
-      isRecording,
-      recordingStartTime,
-      networkCount: networkLogs.length,
-      consoleCount: consoleLogs.length
-    });
-  } else if (request.action === 'clearLogs') {
-    clearLogs();
-    sendResponse({ success: true });
-  } else if (request.action === 'consoleLog' && isRecording) {
-    console.log('[Background] Received console log:', request.level, request.message);
-    consoleLogs.push({
-      timestamp: Date.now(),
-      level: request.level,
-      message: request.message,
-      url: sender.tab ? sender.tab.url : 'unknown'
-    });
-    console.log('[Background] Total console logs:', consoleLogs.length);
-    updatePopupCounts();
-    sendResponse({ success: true });
-  } else if (request.action === 'updateAutoRestart') {
-    isAutoRestartEnabled = request.enabled;
-    chrome.storage.local.set({ isAutoRestartEnabled });
-    if (isRecording) {
-      if (isAutoRestartEnabled) {
-        setupAutoRestart();
-      } else {
-        clearAutoRestart();
-      }
-    }
-    sendResponse({ success: true });
-  } else if (request.action === 'saveLogs') {
-    saveCurrentLogs();
-    sendResponse({ success: true });
-  }
-  return true;
+    return true;
 });
 
 function startRecording() {
-  if (!isRecording) {
-    console.log('[Background] Starting recording');
+    if (isRecording) return;
+
+    console.log('Starting recording');
+    resetState();
     isRecording = true;
     recordingStartTime = Date.now();
-    
-    networkLogs = [];
-    consoleLogs = [];
-    
-    chrome.storage.local.set({ 
-      isRecording: isRecording,
-      recordingStartTime: recordingStartTime 
+
+    // Attach to all existing tabs
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            if (shouldAttachToTab(tab)) {
+                attachDebugger(tab.id);
+            }
+        });
     });
-    
-    injectContentScriptToAllTabs().then(() => {
-      console.log('[Background] Content scripts injected to all tabs');
-    });
-    
-    tryNotifyPopup({
-      action: 'updateState',
-      isRecording: isRecording,
-      recordingStartTime: recordingStartTime
-    });
-    
-    setupAutoRestart();
-    tryNotifyPopup({
-      action: 'updateCounts',
-      networkCount: networkLogs.length,
-      consoleCount: consoleLogs.length
-    });
-  }
+
+    // Listen for new tabs
+    chrome.tabs.onCreated.addListener(onTabCreated);
+    chrome.tabs.onUpdated.addListener(onTabUpdated);
+
+    broadcastState();
 }
 
-async function stopRecording(isAutoRestart = false) {
-  if (isRecording) {
+function stopRecording() {
+    if (!isRecording) return;
+    
+    console.log('Stopping recording');
     isRecording = false;
     recordingStartTime = null;
-    
-    chrome.storage.local.set({ 
-      isRecording: isRecording,
-      recordingStartTime: null 
-    });
-    
-    tryNotifyPopup({
-      action: 'updateState',
-      isRecording: isRecording,
-      recordingStartTime: null
-    });
-    
-    clearAutoRestart();
-    
-    if (!isAutoRestart && (networkLogs.length > 0 || consoleLogs.length > 0)) {
-      try {
-        await saveCurrentLogs();
-      } catch (error) {
-        tryNotifyPopup({ 
-          type: 'notification',
-          message: 'Error saving logs: ' + error.message
+
+    // Remove tab listeners
+    chrome.tabs.onCreated.removeListener(onTabCreated);
+    chrome.tabs.onUpdated.removeListener(onTabUpdated);
+
+    // Detach debugger from all tabs
+    for (const tabId of attachedTabs) {
+        chrome.debugger.detach({ tabId }).catch(() => {
+            console.log('Failed to detach debugger from tab:', tabId);
         });
-      }
     }
-    
+    attachedTabs.clear();
+
+    // Show save dialog if there are logs to save
+    if (networkLogs.length > 0 || consoleLogs.length > 0) {
+        chrome.runtime.sendMessage({
+            action: 'showSaveDialog',
+            networkCount,
+            consoleCount
+        });
+    }
+
+    broadcastState();
+}
+
+function shouldAttachToTab(tab) {
+    if (!tab.url) return false;
+    const url = tab.url.toLowerCase();
+    return !url.startsWith('chrome://') && 
+           !url.startsWith('edge://') && 
+           !url.startsWith('about:') &&
+           !url.startsWith('chrome-extension://');
+}
+
+function attachDebugger(tabId) {
+    if (attachedTabs.has(tabId)) return;
+
+    chrome.debugger.attach({ tabId }, "1.2")
+        .then(() => {
+            console.log('Debugger attached to tab:', tabId);
+            attachedTabs.add(tabId);
+            
+            // Enable network and console monitoring
+            chrome.debugger.sendCommand({ tabId }, "Network.enable");
+            chrome.debugger.sendCommand({ tabId }, "Console.enable");
+        })
+        .catch(error => {
+            console.log('Failed to attach debugger:', error);
+        });
+}
+
+// Tab event handlers
+function onTabCreated(tab) {
+    if (isRecording && shouldAttachToTab(tab)) {
+        attachDebugger(tab.id);
+    }
+}
+
+function onTabUpdated(tabId, changeInfo, tab) {
+    if (isRecording && changeInfo.status === 'complete' && shouldAttachToTab(tab)) {
+        attachDebugger(tabId);
+    }
+}
+
+// Debugger event handlers
+chrome.debugger.onEvent.addListener((debuggeeId, method, params) => {
+    if (!isRecording) return;
+
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] Debug event:`, method, params);
+
+    switch (method) {
+        case 'Network.requestWillBeSent':
+            networkCount++;
+            networkLogs.push({
+                timestamp,
+                type: 'request',
+                data: params
+            });
+            broadcastCounts();
+            break;
+
+        case 'Network.responseReceived':
+            networkLogs.push({
+                timestamp,
+                type: 'response',
+                data: params
+            });
+            break;
+
+        case 'Console.messageAdded':
+            consoleCount++;
+            const message = params.message;
+            
+            // Mirror the console message to extension's console
+            switch (message.level) {
+                case 'error':
+                    // Only log the error, don't throw it
+                    console.log('[Console Error]:', message.text);
+                    break;
+                case 'warning':
+                    console.log('[Console Warning]:', message.text);
+                    break;
+                case 'info':
+                    console.log('[Console Info]:', message.text);
+                    break;
+                default:
+                    console.log('[Console Log]:', message.text);
+            }
+
+            consoleLogs.push({
+                timestamp,
+                level: message.level,
+                text: message.text,
+                source: message.source,
+                url: message.url,
+                line: message.line,
+                column: message.column
+            });
+            broadcastCounts();
+            break;
+    }
+});
+
+async function saveLogs() {
+    console.log('Saving logs...');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+    try {
+        // Save network logs as HAR
+        if (networkLogs.length > 0) {
+            const harLog = {
+                version: '1.2',
+                creator: {
+                    name: 'Network & Console Logger',
+                    version: '1.0'
+                },
+                entries: networkLogs.map(log => ({
+                    startedDateTime: log.timestamp,
+                    time: 0,
+                    request: log.data.request || {},
+                    response: log.data.response || {},
+                    cache: {},
+                    timings: {}
+                }))
+            };
+
+            const harBlob = new Blob([JSON.stringify(harLog, null, 2)], { type: 'application/json' });
+            const harData = await new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(harBlob);
+            });
+
+            await new Promise((resolve, reject) => {
+                chrome.downloads.download({
+                    url: harData,
+                    filename: `network_log_${timestamp}.har`,
+                    saveAs: true
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(chrome.runtime.lastError);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Save console logs
+        if (consoleLogs.length > 0) {
+            const consoleBlob = new Blob([JSON.stringify(consoleLogs, null, 2)], { type: 'application/json' });
+            const consoleData = await new Promise(resolve => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.readAsDataURL(consoleBlob);
+            });
+
+            await new Promise((resolve, reject) => {
+                chrome.downloads.download({
+                    url: consoleData,
+                    filename: `console_log_${timestamp}.json`,
+                    saveAs: true
+                }, () => {
+                    if (chrome.runtime.lastError) {
+                        reject(chrome.runtime.lastError);
+                    } else {
+                        resolve();
+                    }
+                });
+            });
+        }
+
+        // Reset state after successful save
+        resetState();
+    } catch (error) {
+        console.error('Error saving logs:', error);
+    }
+}
+
+function broadcastState() {
+    chrome.runtime.sendMessage({
+        action: 'updateState',
+        isRecording,
+        recordingStartTime,
+        networkCount,
+        consoleCount
+    }).catch(() => {});
+}
+
+function broadcastCounts() {
+    chrome.runtime.sendMessage({
+        action: 'updateCounts',
+        networkCount,
+        consoleCount
+    }).catch(() => {});
+}
+
+function resetState() {
     networkLogs = [];
     consoleLogs = [];
-    tryNotifyPopup({
-      action: 'updateCounts',
-      networkCount: 0,
-      consoleCount: 0
-    });
-  }
-}
-
-function clearLogs() {
-  networkLogs = [];
-  consoleLogs = [];
-  tryNotifyPopup({
-    action: 'updateCounts',
-    networkCount: 0,
-    consoleCount: 0
-  });
-}
-
-function updatePopupCounts() {
-  tryNotifyPopup({
-    action: 'updateCounts',
-    networkCount: networkLogs.length,
-    consoleCount: consoleLogs.length
-  });
-}
-
-function tryNotifyPopup(message) {
-  chrome.runtime.sendMessage(message).catch(() => {});
-}
-
-function setupAutoRestart() {
-  clearAutoRestart();
-  
-  if (isRecording && isAutoRestartEnabled) {
-    const startTime = Date.now();
-    
-    function checkAutoRestart() {
-      if (!isRecording || !isAutoRestartEnabled) {
-        clearAutoRestart();
-        return;
-      }
-      
-      const elapsed = Date.now() - startTime;
-      if (elapsed >= AUTO_RESTART_INTERVAL) {
-        handleAutoRestart();
-      }
-    }
-    
-    autoRestartInterval = setInterval(checkAutoRestart, 1000);
-  }
-}
-
-function clearAutoRestart() {
-  if (autoRestartInterval) {
-    clearInterval(autoRestartInterval);
-    autoRestartInterval = null;
-  }
-}
-
-function handleAutoRestart() {
-  if (isRecording && isAutoRestartEnabled) {
-    stopRecording(true).then(() => {
-      if (isAutoRestartEnabled) {
-        startRecording();
-      }
-    });
-  }
-}
-
-async function saveCurrentLogs() {
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  
-  // Save network logs as HAR
-  if (networkLogs.length > 0) {
-    const harData = {
-      log: {
-        version: '1.2',
-        creator: {
-          name: 'Network & Console Logger',
-          version: '1.0'
-        },
-        browser: {
-          name: 'Microsoft Edge',
-          version: '1.0'
-        },
-        pages: [{
-          startedDateTime: new Date(recordingStartTime).toISOString(),
-          id: 'page_1',
-          title: 'Network Log Recording',
-          pageTimings: {
-            onContentLoad: -1,
-            onLoad: -1
-          }
-        }],
-        entries: networkLogs.map(log => ({
-          startedDateTime: log.timestamp,
-          time: 0,
-          request: {
-            method: 'GET',
-            url: log.url,
-            httpVersion: 'HTTP/1.1',
-            headers: [],
-            queryString: [],
-            cookies: [],
-            headersSize: -1,
-            bodySize: -1
-          },
-          response: {
-            status: 200,
-            statusText: 'OK',
-            httpVersion: 'HTTP/1.1',
-            headers: [],
-            cookies: [],
-            content: {
-              size: 0,
-              mimeType: 'application/json'
-            },
-            redirectURL: '',
-            headersSize: -1,
-            bodySize: -1,
-            _transferSize: 0
-          },
-          cache: {},
-          timings: {
-            blocked: 0,
-            dns: -1,
-            ssl: -1,
-            connect: -1,
-            send: 0,
-            wait: 0,
-            receive: 0
-          },
-          serverIPAddress: '',
-          _resourceType: log.type
-        }))
-      }
-    };
-
-    const harContent = JSON.stringify(harData, null, 2);
-    const harDataUrl = 'data:application/har+json;base64,' + btoa(unescape(encodeURIComponent(harContent)));
-    
-    await chrome.downloads.download({
-      url: harDataUrl,
-      filename: `network_logs_${timestamp}.har`,
-      saveAs: true
-    });
-  }
-  
-  // Save console logs separately
-  if (consoleLogs.length > 0) {
-    const logContent = consoleLogs.map(log => 
-      `[${new Date(log.timestamp).toISOString()}] [${log.level.toUpperCase()}] ${log.message}`
-    ).join('\n');
-    
-    const logDataUrl = 'data:text/plain;base64,' + btoa(unescape(encodeURIComponent(logContent)));
-    
-    await chrome.downloads.download({
-      url: logDataUrl,
-      filename: `console_logs_${timestamp}.log`,
-      saveAs: true
-    });
-  }
+    networkCount = 0;
+    consoleCount = 0;
+    broadcastCounts();
 }
